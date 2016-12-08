@@ -33,7 +33,7 @@ __Twilio__
 
 ```json
 {
-  "twilioSid": "YOUR_TWILLIO_ACCOUNT_SID",
+  "twilioAccountSid": "YOUR_TWILLIO_ACCOUNT_SID",
   "twilioAuthToken": "YOUR_TWILLIO_AUTH_TOKEN"
 }
 ```
