@@ -1,6 +1,5 @@
-# #TTS Plugin
-
-# This is an plugin to read text to speech from the audio speaker
+# #SMS Plugin
+# This plugin sends SMS using various SMS providers
 
 # ##The plugin code
 module.exports = (env) ->
@@ -8,7 +7,7 @@ module.exports = (env) ->
   Promise = env.require 'bluebird'
   assert = env.require 'cassert'
   #util = env.require 'util'
-  M = env.matcher
+  M = env.matcher 
 
   # Load our extra libraries
   phone = require('node-phonenumber')
@@ -16,48 +15,71 @@ module.exports = (env) ->
 
   # SMS Plugin
   class SMSPlugin extends env.plugins.Plugin
-
     # ####init()
     init: (app, @framework, @config) =>
+      @provider = null
+      @env = env
+      @phone = phone
+      @phoneUtil = phoneUtil
 
-      # Load all available providers
-      @providers = {}
+      pluginPath = @framework.pluginManager.pathToPlugin("pimatic-"+@config.plugin)
+      @currentSchemaRef = env.require pluginPath + '/sms-config-schema.coffee'
       getClassOf = Function.prototype.call.bind(Object.prototype.toString);
-      SMSProvider = require('./providers/SMSProvider')
 
-      for key, provider of require('./providers')
-        @providers[key] = provider
+      providers = {}
 
-      if (@providers.length is 0 or @config.provider.length is 0) then throw new Error("No Providers Available!")
+      fs = require "fs"
+      path = require "path"
+
+      app.post('/pimatic-sms/provider', (req, res) =>
+        newprovider = req.body.provider
+        #console.log('Provider: ' + newprovider)
+        if @currentSchemaRef.provideroptions? and (newprovider of @currentSchemaRef.provideroptions)
+          @currentSchemaRef.required = @currentSchemaRef.provideroptions[newprovider].required
+        res.sendStatus 200
+      )
+
+      @framework.on "after init", =>
+        mobileFrontend = @framework.pluginManager.getPlugin 'mobile-frontend'
+        if mobileFrontend?
+          mobileFrontend.registerAssetFile 'js', "pimatic-sms/app/pimatic-sms-page.coffee"
+        return
+
+      # we can use only one provider at time therefore we load only the selected provider
+      providersDir = '/providers/'
+      providersPath = pluginPath + providersDir
+      dirs = fs.readdirSync(providersPath)
+      re = /\.coffee$/i
+      for file in dirs
+        if not file.match(re) then continue
+        prov = file.replace(re, '').toLowerCase()
+        if (prov isnt "index") and (prov isnt "smsprovider")
+          file = '.' + providersDir + file
+          providers[prov] = file
+
+      if (providers.length is 0 or @config.provider.length is 0) then throw new Error("No Providers Available!")
 
       # ADD SMS PROVIDER CONFIG HERE
-      if @config.provider is "twilio" and @providers.hasOwnProperty 'twilio'
-        if (@config.twilioAccountSid? is "" or @config.twilioAuthToken is "")
-          return env.logging.error "We need AccountSid and AuthToken when using provider 'twilio'"
-        else
-          @provider = @providers['twilio'](Promise, {
-            accountSid: @config.twilioAccountSid,
-            authToken: @config.twilioAuthToken,
-            fromNumber: @config.fromNumber
-            })
-      else if @config.provider is "threehk" and @providers.hasOwnProperty 'threehk'
-        if (@config.threehkPassword is "")
-          return env.logging.error "We need password when using provider 'threehk'"
-        else
-          mobileLoginNumber = phoneUtil.format(phoneUtil.parse(@config.fromNumber,'HK'), phone.PhoneNumberFormat.NATIONAL).replace(/ /,'').trim();
-          @provider = @providers['threehk'](Promise, {
-            mobileNumber: mobileLoginNumber,
-            password: @config.threehkPassword,
-            })
+      if providers.hasOwnProperty @config.provider
+        @provider = require(providers[@config.provider])(Promise, @config, @)
       else
-        throw new Error("Invalid Provider Specified!")
+        throw new Error("Invalid Provider '#{@config.provider}' Specified!")
 
       @framework.ruleManager.addActionProvider(new SMSActionProvider @framework, @)
 
     destroy: () =>
-      for key, provider of @providers
-        provider.destroy()
+      if @provider? then @provider.destroy()
       super()
+    prepareConfig: (config) =>
+      try
+        if config.twilioAccountSid?          
+          config.login = config.twilioAccountSid unless config.login?
+          delete config['twilioAccountSid'] 
+        if config.twilioAuthToken?
+          config.password = config.twilioAuthToken unless config.password?
+          delete config['twilioAuthToken'] 
+      catch error
+        env.logger.error "Unable prepare config: " + error 
 
   # Create a instance of my plugin
   plugin = new SMSPlugin
@@ -122,22 +144,25 @@ module.exports = (env) ->
           # if toNumber is ""
           #   return reject(__("No Text Specified to post! Ignoring"))
 
-          formattedToNumber = phoneUtil.format(phoneUtil.parse(toNumber,@numberFormatCountry), phone.PhoneNumberFormat.E164);
+          if @numberFormatCountry
+            formattedToNumber = phoneUtil.format(phoneUtil.parse(toNumber,@numberFormatCountry), phone.PhoneNumberFormat.E164);
+          else
+            formattedToNumber = toNumber
 
           if simulate
-            return resolve(__("Would send SMS #{message} to #{toNumber}"))
+            return resolve(__("Would send SMS #{message} to #{formattedToNumber}"))
           else
             return @provider.sendSMSMessage(formattedToNumber, text).then( (message) =>
                 if (@provider.hasPriceInfo)
                     if (message.price is null)
-                      env.logger.debug "SMS sent to #{toNumber} for free!"
-                      resolve __("SMS sent to #{toNumber} for free!")
+                      env.logger.debug "SMS sent to #{formattedToNumber} for free!"
+                      resolve __("SMS sent to #{formattedToNumber} for free!")
                     else
-                      env.logger.debug "SMS sent to #{toNumber} and cost #{message.price} #{message.price_unit}"
-                      resolve __("SMS sent to #{toNumber} and cost #{message.price} #{message.price_unit}")
+                      env.logger.debug "SMS sent to #{formattedToNumber} and cost #{message.price} #{message.price_unit}"
+                      resolve __("SMS sent to #{formattedToNumber} and cost #{message.price} #{message.price_unit}")
                 else
-                    env.logger.debug "SMS sent to #{toNumber}"
-                    resolve __("SMS sent to #{toNumber}")
+                    env.logger.debug "SMS sent to #{formattedToNumber}"
+                    resolve __("SMS sent to #{formattedToNumber}")
             , (rejection) ->
               reject rejection.message
               )
