@@ -1,30 +1,23 @@
 SMSProvider = require('./SMSProvider')
 
-module.exports = (Promise, logger, options) ->
+module.exports = (Promise, options, plugin) ->
 
   class TwilioSMSProvider extends SMSProvider
-    constructor: (options) ->
-      if typeof options is 'undefined'
-        throw new Error 'Must pass options'
+    constructor: (options, plugin) ->
+      super()
 
-      if typeof options.accountSid is 'undefined' or typeof options.authToken is 'undefined'
-        throw new Error 'Must set accountSid and authToken'
-
-      if typeof options.fromNumber is 'undefined'
-        throw new Error 'Must set fromNumber'
-
+      @checkOptions(options, {'login': '', 'password': '', 'fromNumber': 'from number'})
       # require the Twilio module and create a REST client
-      @client = require("twilio")(options.accountSid, options.authToken);
-      @client.messages.create = Promise.promisify(client.messages.create)
+      @client = require("twilio")(options.login, options.password);
+      @client.messages.create = Promise.promisify(@client.messages.create)
 
     sendSMSMessage: (toNumber, message) ->
-      return client.messages.create({
+      return @client.messages.create({
             to: toNumber,
             from: options.fromNumber,
             body: message})
 
-
-  provider = new TwilioSMSProvider(options)
+  provider = new TwilioSMSProvider(options, plugin)
 
   # Pass back the message method
   return provider

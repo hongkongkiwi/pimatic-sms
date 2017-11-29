@@ -2,21 +2,21 @@ rp = require('request-promise')
 _ = require('underscore')
 urlencode = require('urlencode');
 SMSProvider = require('./SMSProvider')
-debug = require('debug')('pimatic-sms::threehk')
 
-module.exports = (Promise, options) ->
+module.exports = (Promise, options, plugin) ->
 
   class ThreeHKSMSProvider extends SMSProvider
-    constructor: (@options) ->
+    constructor: (@options, @plugin) ->
+        super()
 
-        if typeof @options is 'undefined'
-            throw new Error 'Must pass options'
+        @checkOptions(options, {'password': '', 'fromNumber': 'mobileNumber'})
 
-        if typeof @options.mobileNumber is 'undefined' or typeof options.password is 'undefined'
-            throw new Error 'Must set mobileNumber and password'
+        phoneUtil = @plugin.phoneUtil
+        @mobileLoginNumber = phoneUtil.format(phoneUtil.parse(@options.fromNumber,'HK'), @plugin.phone.PhoneNumberFormat.NATIONAL).replace(/ /,'').trim();
+        @password = @options.password
 
-        options.headers = options.headers || {}
-        options.requestOptions = options.requestOptions || {}
+        @options.headers = @options.headers || {}
+        @options.requestOptions = @options.requestOptions || {}
 
         @cookieJar = rp.jar();
 
@@ -27,7 +27,7 @@ module.exports = (Promise, options) ->
             "Upgrade-Insecure-Requests": "1"
             "DNT": "1"
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
-        }, options.headers)
+        }, @options.headers)
 
         # Set some Defaults
         @rp = rp.defaults(_.extendOwn({
@@ -35,11 +35,7 @@ module.exports = (Promise, options) ->
                 method: 'POST'
                 gzip: true
                 jar: @cookieJar
-            }, options.requestOptions))
-
-        debug = debug
-
-        super()
+            }, @options.requestOptions))
 
     _logout: () =>
         options = {
@@ -52,7 +48,7 @@ module.exports = (Promise, options) ->
 
         return @rp(options)
             .then( (response) =>
-                debug('Successfully Logged Out')
+                @plugin.env.logger.debug('Successfully Logged Out')
             )
 
     _login: (mobileNumber, password) =>
@@ -87,7 +83,7 @@ module.exports = (Promise, options) ->
 
         return @rp(options)
             .then( () =>
-                debug('Successfully Logged In')
+                @plugin.env.logger.debug('Successfully Logged In')
             )
 
     _createSMS: (toNumber, message) =>
@@ -109,7 +105,7 @@ module.exports = (Promise, options) ->
 
         return @rp(options)
             .then( () =>
-                debug('Successfully Created SMS')
+                @plugin.env.logger.debug('Successfully Created SMS')
             )
 
     _sendSMS: () =>
@@ -121,7 +117,7 @@ module.exports = (Promise, options) ->
         }
 
         return @rp(options).then( () =>
-                debug('Successfully Sent SMS!')
+                @plugin.env.logger.debug('Successfully Sent SMS!')
             )
 
     _createAndSendSMS: (toNumber, message) =>
@@ -148,7 +144,7 @@ module.exports = (Promise, options) ->
 
         for i of cookies
             cookie = cookies[i]
-            #debug JSON.stringify(cookie,null,2)
+            #@plugin.env.logger.debug JSON.stringify(cookie,null,2)
             if (cookie.key is 'CustName') then userProfile.customerName = cookie.value.split('               ')
             else if (cookie.key is 'CustClass') then userProfile.customerClass = cookie.value
             else if (cookie.key is 'MobileActivationDate') then userProfile.mobileActivationDate = cookie.value
@@ -163,10 +159,10 @@ module.exports = (Promise, options) ->
         return userProfile
 
     sendSMSMessage: (toNumber, message) =>
-      debug 'Attempting to Login to 3Care'
-      return @_login(@options.mobileNumber, @options.password)
+      @plugin.env.logger.debug 'Attempting to Login to 3Care'
+      return @_login(@mobileLoginNumber, @password)
           .then( () =>
-            debug 'Successfully Logged into 3Care'
+            @plugin.env.logger.debug 'Successfully Logged into 3Care'
             return @_createAndSendSMS(toNumber,message)
           ).then( () =>
             return {
@@ -181,4 +177,4 @@ module.exports = (Promise, options) ->
         )
 
 
-  return new ThreeHKSMSProvider(options, debug.debug)
+  return new ThreeHKSMSProvider(options, plugin)

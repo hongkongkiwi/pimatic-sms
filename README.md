@@ -1,6 +1,12 @@
 # pimatic-sms
 
-SMS Integration with [Pimatic](https://pimatic.org). Supports [Twilio](https://www.twilio.com/) and [ThreeHK](http://www.three.com.hk) but new providers can be added.
+SMS Integration with [Pimatic](https://pimatic.org). Supports:
+* [Twilio](https://www.twilio.com) 
+* [ThreeHK](http://www.three.com.hk) 
+* [ePochtaSMS](https://www.epochtasms.ru)
+* [Mobilant](http://www.mobilant.be) 
+* [MQTT-SIM900 SMS Bridge](https://github.com/ptvoinfo/sim-module) 
+* new providers can be added (add your plugins to to the /providers/ folder)
 
 
 ## Plugin Configuration

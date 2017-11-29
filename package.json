@@ -1,6 +1,6 @@
 {
   "name": "pimatic-sms",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "description": "Send SMS Messages from Pimatic. Supports lots of different providers.",
   "main": "sms",
   "configSchema": "sms-config-schema.coffee",
